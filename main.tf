@@ -1,6 +1,11 @@
-# prereqs: SSH key-pair for SSH into instances
+variable "aws_profile" {
+  default = ""
+}
+variable "aws_region" {
+  default = "eu-west-1"
+}
 
 provider "aws" {
-  profile    = "hashi"
-  region     = "eu-west-1"
+  profile    = "${var.aws_profile}"
+  region     = "${var.aws_region}"
 }

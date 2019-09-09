@@ -1,3 +1,15 @@
+variable "ssh_key" {
+  default = "~/.ssh/id_rsa"
+}
+
+variable "flask_private_ip" {
+  default = "10.100.0.10"
+}
+
+variable "redis_private_ip" {
+  default = "10.100.0.11"
+}
+
 resource "aws_instance" "krastin-counter-vm-flask" {
   ami = "${data.aws_ami.flask.id}"
   instance_type = "t2.micro"
@@ -7,6 +19,20 @@ resource "aws_instance" "krastin-counter-vm-flask" {
     device_index         = 0
   }
 
+  provisioner "file" {
+    source      = "website"
+    destination = "/tmp"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo mv /tmp/website/* /home/flask/flask-website/",
+      "sudo sed -i s/Environment=REDIS_HOST=127.0.0.1/Environment=REDIS_HOST=${var.redis_private_ip}/ /etc/systemd/system/flask-website.service",
+      "sudo systemctl daemon-reload",
+      "sudo systemctl restart flask-website.service"
+    ]
+  }
+
   credit_specification {
     cpu_credits = "unlimited"
   }
@@ -14,6 +40,9 @@ resource "aws_instance" "krastin-counter-vm-flask" {
   connection {
     type = "ssh"
     user = "ubuntu"
+    agent = false
+    host = "${aws_instance.krastin-counter-vm-flask.public_ip}"
+    private_key = "${file(var.ssh_key)}"
   }
   key_name = "krastin-key1"
 
@@ -24,7 +53,7 @@ resource "aws_instance" "krastin-counter-vm-flask" {
 
 resource "aws_network_interface" "krastin-counter-flask-int1" {
   subnet_id   = "${aws_subnet.krastin-counter-vpc-subnet-10-100.id}"
-  private_ips = ["10.100.0.10"]
+  private_ips = ["${var.flask_private_ip}"]
   security_groups = ["${aws_security_group.krastin-counter-vpc-sg-permit.id}"]
 
   depends_on = ["aws_security_group.krastin-counter-vpc-sg-permit", "aws_subnet.krastin-counter-vpc-subnet-10-100"]
@@ -39,6 +68,13 @@ resource "aws_instance" "krastin-counter-vm-redis" {
     device_index         = 0
   }
 
+  provisioner "remote-exec" {
+    inline = [
+      "sudo sed -i 's/bind 127.0.0.1/bind ${var.redis_private_ip}/' /etc/redis/redis.conf",
+      "sudo systemctl restart redis-server"
+    ]
+  }
+
   credit_specification {
     cpu_credits = "unlimited"
   }
@@ -46,6 +82,9 @@ resource "aws_instance" "krastin-counter-vm-redis" {
   connection {
     type = "ssh"
     user = "ubuntu"
+    agent = false
+    host = "${aws_instance.krastin-counter-vm-redis.public_ip}"
+    private_key = "${file(var.ssh_key)}"
   }
   key_name = "krastin-key1"
 
@@ -56,7 +95,7 @@ resource "aws_instance" "krastin-counter-vm-redis" {
 
 resource "aws_network_interface" "krastin-counter-redis-int1" {
   subnet_id   = "${aws_subnet.krastin-counter-vpc-subnet-10-100.id}"
-  private_ips = ["10.100.0.11"]
+  private_ips = ["${var.redis_private_ip}"]
   security_groups = ["${aws_security_group.krastin-counter-vpc-sg-permit.id}"]
 
   depends_on = ["aws_security_group.krastin-counter-vpc-sg-permit", "aws_subnet.krastin-counter-vpc-subnet-10-100"]
